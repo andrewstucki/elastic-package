@@ -33,6 +33,9 @@ const (
 	GenerateTestResultFlagName        = "generate"
 	GenerateTestResultFlagDescription = "generate test result file"
 
+	OutputFormatFlagName        = "format"
+	OutputFormatFlagDescription = "format of package status output (allowed values: 'json', 'table')"
+
 	ReportFormatFlagName        = "report-format"
 	ReportFormatFlagDescription = "format of test report"
 

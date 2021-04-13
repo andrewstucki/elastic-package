@@ -5,6 +5,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -22,11 +23,21 @@ import (
 	"github.com/elastic/elastic-package/internal/registry"
 )
 
-const statusLongDescription = `Use this command to display the current deployment status of a package.
+const (
+	statusLongDescription = `Use this command to display the current deployment status of a package.
 
 If a package name is specified, then information about that package is
 returned, otherwise this command checks if the current directory is a
 package directory and reports its status.`
+	defaultFormat = "table"
+)
+
+type printer func(p *status.PackageStatus, w io.Writer) error
+
+var allowedFormats = map[string]printer{
+	"table": printTable,
+	"json":  printJSON,
+}
 
 func setupStatusCommand() *cobraext.Command {
 	cmd := &cobra.Command{
@@ -37,6 +48,7 @@ func setupStatusCommand() *cobraext.Command {
 		RunE:  statusCommandAction,
 	}
 	cmd.Flags().BoolP(cobraext.ShowAllFlagName, "a", false, cobraext.ShowAllFlagDescription)
+	cmd.Flags().StringP(cobraext.OutputFormatFlagName, "f", defaultFormat, cobraext.OutputFormatFlagDescription)
 
 	return cobraext.NewCommand(cmd, cobraext.ContextPackage)
 }
@@ -48,6 +60,14 @@ func statusCommandAction(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return cobraext.FlagParsingError(err, cobraext.ShowAllFlagName)
 	}
+	format, err := cmd.Flags().GetString(cobraext.OutputFormatFlagName)
+	if err != nil {
+		return cobraext.FlagParsingError(err, cobraext.OutputFormatFlagName)
+	}
+	printer, ok := allowedFormats[format]
+	if !ok {
+		return cobraext.FlagParsingError(fmt.Errorf("invalid format value: '%s'", format), cobraext.OutputFormatFlagName)
+	}
 	if len(args) > 0 {
 		packageName = args[0]
 	}
@@ -55,7 +75,7 @@ func statusCommandAction(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	return print(packageStatus, os.Stdout)
+	return printer(packageStatus, os.Stdout)
 }
 
 func getPackageStatus(packageName string, showAll bool) (*status.PackageStatus, error) {
@@ -80,8 +100,18 @@ func getPackageStatus(packageName string, showAll bool) (*status.PackageStatus, 
 	})
 }
 
-// print formats and prints package information into a table
-func print(p *status.PackageStatus, w io.Writer) error {
+// printJSON formats and prints package information in pretty json format
+func printJSON(p *status.PackageStatus, w io.Writer) error {
+	data, err := json.MarshalIndent(p, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Fprint(w, string(data))
+	return nil
+}
+
+// printTable formats and prints package information into a table
+func printTable(p *status.PackageStatus, w io.Writer) error {
 	bold := color.New(color.Bold)
 	red := color.New(color.FgRed, color.Bold)
 	cyan := color.New(color.FgCyan, color.Bold)
